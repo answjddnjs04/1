@@ -11,3 +11,4 @@ export async function fetchAIAnalysis(topic) {
         }, 500);
     });
 }
+//12:41

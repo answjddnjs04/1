@@ -6,6 +6,7 @@ let nodes = {};
 let links = [];
 let synapses = []; 
 let selectedNodeId = 'central-node';
+let nodeCounter = 0;
 let viewX = 0, viewY = 0;
 let targetViewX = 0, targetViewY = 0;
 let viewScale = 1;
@@ -17,7 +18,7 @@ const NODE_HEIGHT = 54;
 export function initMindmap(rootTopic) {
     const canvas = getSafeElement('mindmap-canvas');
     if (!canvas) return;
-    canvas.innerHTML = ''; nodes = {}; links = []; synapses = [];
+    canvas.innerHTML = ''; nodes = {}; links = []; synapses = []; nodeCounter = 0;
     createNode('central-node', rootTopic, 0, null);
     requestAnimationFrame(updateFrame);
     setupInteractions();
@@ -108,12 +109,28 @@ function autoManageSynapses() {
 
 export async function createNode(id, title, level = 0, parentId = null) {
     const canvas = getSafeElement('mindmap-canvas');
+    nodeCounter++;
+    const currentIndex = nodeCounter;
     const analysis = await fetchAIAnalysis(title);
     const el = document.createElement('div');
     el.id = id;
     el.className = `mind-node animate-node ${level === 0 ? 'selected' : ''}`;
     
-    nodes[id] = { id, title: title.trim(), level, parentId, x: nodes[parentId]?.x || 0, y: nodes[parentId]?.y || 0, targetX: 0, targetY: 0, isExpanded: false, isPinned: false, element: el, rawSummary: analysis.summary };
+    nodes[id] = { 
+        id, 
+        index: currentIndex,
+        title: title.trim(), 
+        level, 
+        parentId, 
+        x: nodes[parentId]?.x || 0, 
+        y: nodes[parentId]?.y || 0, 
+        targetX: 0, 
+        targetY: 0, 
+        isExpanded: false, 
+        isPinned: false, 
+        element: el, 
+        rawSummary: analysis.summary 
+    };
 
     el.onclick = (e) => {
         e.stopPropagation(); selectNode(id);
@@ -141,8 +158,8 @@ function renderAllKeywords() {
             html = html.replace(regex, `<span class="keyword-link" data-target-id="${target.id}">$1</span>`);
         });
         
-        const header = `<span>${node.title}</span><div class="flex items-center"><button class="pin-btn"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z"/></svg></button><button class="expand-btn">＋</button></div>`;
-        const content = `<div class="node-content custom-scroll"><div style="color:var(--accent-color); font-weight:800; font-size:11px; margin-bottom:8px; text-transform:uppercase;">Knowledge Sync</div><p style="color:#eee; font-size:13px; line-height:1.5;">${html}</p></div>`;
+        const header = `<span>${node.index}. ${node.title}</span><div class="flex items-center"><button class="pin-btn"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z"/></svg></button><button class="expand-btn">＋</button></div>`;
+        const content = `<div class="node-content custom-scroll"><div style="color:var(--accent-color); font-weight:800; font-size:11px; margin-bottom:8px; text-transform:uppercase;">Knowledge Sync #${node.index}</div><p style="color:#eee; font-size:13px; line-height:1.5;">${html}</p></div>`;
         
         node.element.innerHTML = `<div class="node-header">${header}</div>${content}`;
 

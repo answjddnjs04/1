@@ -3,69 +3,94 @@
 export const lerp = (start, end, t) => start + (end - start) * t;
 
 /**
- * 지능형 가변 레이아웃 엔진
- * 1. ReferenceError 수정: parentId 참조 오류 해결
- * 2. X축 간격 확장: 320px로 상향 조정
+ * 지능형 가변 레이아웃 엔진 (Top-down Anchor & Dynamic Y-Offset)
+ * 1. 상단 노드 고정: 클릭된 노드보다 위쪽 노드들은 좌표를 고수 (Frozen)
+ * 2. 하단 노드 동적 오프셋: 클릭된 노드보다 아래쪽 노드들을 문서 높이만큼 밀어냄
+ * 3. 상태 복구: 문서 닫기 시 기본 대칭 레이아웃으로 부드럽게 복귀
  */
 export function calculateNodeLayout(nodes, config = {}) {
     const {
-        levelGap = 320,      // [수평 간격 확장] 320px
-        baseNodeHeight = 80,  
-        docHeight = 280,      
-        margin = 60,          
+        levelGap = 320,
+        baseNodeHeight = 80,
+        docHeight = 280,
+        margin = 60,
         rootId = 'central-node'
     } = config;
 
-    // 1단계: 각 노드의 서브트리 전체 높이 계산
-    function calculateSubtreeHeight(nodeId) {
+    const allNodesArray = Object.values(nodes);
+    if (allNodesArray.length === 0) return;
+
+    // 1단계: 모든 노드의 '기본(Collapsed)' 서브트리 높이 계산
+    function calculateBaseSubtreeHeight(nodeId) {
         const node = nodes[nodeId];
         if (!node) return 0;
         
-        const children = Object.values(nodes).filter(n => n.parentId === nodeId);
-        const selfHeight = baseNodeHeight + (node.isExpanded ? docHeight + margin : 0);
+        const children = allNodesArray.filter(n => n.parentId === nodeId);
+        const selfHeight = baseNodeHeight; 
 
         if (children.length === 0) {
-            node.subtreeHeight = selfHeight;
+            node.baseHeight = selfHeight;
             return selfHeight;
         }
 
         const childrenTotalHeight = children.reduce((sum, child) => {
-            return sum + calculateSubtreeHeight(child.id);
+            return sum + calculateBaseSubtreeHeight(child.id);
         }, 0) + (children.length - 1) * margin;
 
-        node.subtreeHeight = Math.max(selfHeight, childrenTotalHeight);
-        return node.subtreeHeight;
+        node.baseHeight = Math.max(selfHeight, childrenTotalHeight);
+        return node.baseHeight;
     }
 
-    // 2단계: 좌표 배치 (ReferenceError 해결)
-    function positionNodes(nodeId, level) {
+    // 2단계: 기본(Collapsed) 대칭 레이아웃 좌표 배치
+    function positionBaseNodes(nodeId, level) {
         const parentNode = nodes[nodeId];
         if (!parentNode) return;
 
-        const children = Object.values(nodes).filter(n => n.parentId === nodeId);
+        const children = allNodesArray.filter(n => n.parentId === nodeId);
         if (children.length === 0) return;
 
-        // 부모의 Y 좌표를 기준으로 자식들을 대칭 배치
-        let currentY = parentNode.targetY - (parentNode.subtreeHeight / 2);
+        // 부모의 Y 좌표를 기준으로 자식들을 대칭 배치 (기본형)
+        let currentY = parentNode.targetY - (parentNode.baseHeight / 2);
 
         children.forEach((child) => {
             child.targetX = (level + 1) * levelGap;
-            // 자식 서브트리의 중앙에 노드 위치
-            child.targetY = currentY + (child.subtreeHeight / 2);
+            child.targetY = currentY + (child.baseHeight / 2);
             
-            // 다음 형제를 위해 Y 좌표 이동
-            currentY += child.subtreeHeight + margin;
-
-            // 재귀 호출
-            positionNodes(child.id, level + 1);
+            currentY += child.baseHeight + margin;
+            positionBaseNodes(child.id, level + 1);
         });
     }
 
     if (nodes[rootId]) {
-        calculateSubtreeHeight(rootId);
+        // 초기화 및 기본 레이아웃 계산
+        calculateBaseSubtreeHeight(rootId);
         nodes[rootId].targetX = 0;
         nodes[rootId].targetY = 0;
-        positionNodes(rootId, 0);
+        positionBaseNodes(rootId, 0);
+
+        // 3단계: 확장(isExpanded)된 노드들에 의한 전역 동적 오프셋 적용
+        // Y 좌표 순서대로 정렬하여 상단 노드의 확장이 하단 노드에 누적되도록 함 (Top-down Anchor)
+        const sortedNodes = [...allNodesArray].sort((a, b) => a.targetY - b.targetY);
+        const cumulativeOffsets = new Map();
+        sortedNodes.forEach(n => cumulativeOffsets.set(n.id, 0));
+
+        sortedNodes.forEach(expNode => {
+            if (expNode.isExpanded) {
+                const shift = docHeight + margin;
+                sortedNodes.forEach(otherNode => {
+                    // [핵심] 클릭된 노드보다 시각적으로 아래(Y값이 큰)에 있는 노드들만 밀어냄
+                    // 이로 인해 클릭 노드 상단 노드들은 Frozen 상태 유지
+                    if (otherNode.targetY > expNode.targetY) {
+                        cumulativeOffsets.set(otherNode.id, cumulativeOffsets.get(otherNode.id) + shift);
+                    }
+                });
+            }
+        });
+
+        // 최종 좌표에 누적 오프셋 반영
+        allNodesArray.forEach(node => {
+            node.targetY += cumulativeOffsets.get(node.id);
+        });
     }
 }
 
