@@ -58,10 +58,6 @@ function updateEdges() {
     });
 }
 
-/**
- * 지능형 시냅스 자동 관리
- * 1. .trim() 및 toLowerCase() 적용하여 매칭 정확도 향상
- */
 function autoManageSynapses() {
     const allNodes = Object.values(nodes);
     const expandedNodes = allNodes.filter(n => n.isExpanded);
@@ -70,6 +66,7 @@ function autoManageSynapses() {
     expandedNodes.forEach(source => {
         allNodes.forEach(target => {
             if (source.id === target.id) return;
+            if (!source.rawSummary || !target.title) return;
             const keyword = target.title.trim().toLowerCase();
             if (keyword.length < 2) return;
 
@@ -107,35 +104,36 @@ function autoManageSynapses() {
     });
 }
 
-export async function createNode(id, title, level = 0, parentId = null) {
+export async function createNode(id, userInput, level = 0, parentId = null) {
     const canvas = getSafeElement('mindmap-canvas');
     nodeCounter++;
     const currentIndex = nodeCounter;
-    const analysis = await fetchAIAnalysis(title);
+    
+    // 로딩 상태를 위한 임시 엘리먼트 생성
     const el = document.createElement('div');
     el.id = id;
-    el.className = `mind-node animate-node ${level === 0 ? 'selected' : ''}`;
+    el.className = `mind-node animate-node loading ${level === 0 ? 'selected' : ''}`;
+    el.innerHTML = `<div class="node-header"><span class="animate-pulse">Analyzing...</span></div>`;
+    
+    // 초기 위치 설정
+    const parent = nodes[parentId];
+    const initialX = parent ? parent.x : 0;
+    const initialY = parent ? parent.y : 0;
     
     nodes[id] = { 
         id, 
         index: currentIndex,
-        title: title.trim(), 
+        title: userInput, 
         level, 
         parentId, 
-        x: nodes[parentId]?.x || 0, 
-        y: nodes[parentId]?.y || 0, 
-        targetX: 0, 
-        targetY: 0, 
+        x: initialX, 
+        y: initialY, 
+        targetX: initialX, 
+        targetY: initialY, 
         isExpanded: false, 
         isPinned: false, 
         element: el, 
-        rawSummary: analysis.summary 
-    };
-
-    el.onclick = (e) => {
-        e.stopPropagation(); selectNode(id);
-        if (e.target.closest('.expand-btn')) toggleExpand(id);
-        if (e.target.closest('.pin-btn')) togglePin(id);
+        rawSummary: "" 
     };
 
     canvas.appendChild(el);
@@ -143,6 +141,22 @@ export async function createNode(id, title, level = 0, parentId = null) {
         const line = document.createElement('div'); line.className = "edge-line";
         canvas.appendChild(line); links.push({ from: parentId, to: id, element: line });
     }
+
+    // AI 분석 호출 (부모 컨텍스트 전달)
+    const context = parent ? parent.rawSummary : "";
+    const analysis = await fetchAIAnalysis(userInput, context);
+    
+    // 데이터 업데이트
+    nodes[id].title = analysis.title;
+    nodes[id].rawSummary = analysis.summary;
+    el.classList.remove('loading');
+    
+    el.onclick = (e) => {
+        e.stopPropagation(); selectNode(id);
+        if (e.target.closest('.expand-btn')) toggleExpand(id);
+        if (e.target.closest('.pin-btn')) togglePin(id);
+    };
+
     refreshLayout();
     renderAllKeywords();
 }
@@ -150,9 +164,11 @@ export async function createNode(id, title, level = 0, parentId = null) {
 function renderAllKeywords() {
     const allNodes = Object.values(nodes);
     allNodes.forEach(node => {
+        if (!node.rawSummary) return; // 아직 로딩 중인 노드 스킵
+
         let html = node.rawSummary;
         allNodes.forEach(target => {
-            if (target.id === node.id) return;
+            if (target.id === node.id || !target.title) return;
             const keyword = target.title.trim();
             const regex = new RegExp(`(${keyword})`, 'gi');
             html = html.replace(regex, `<span class="keyword-link" data-target-id="${target.id}">$1</span>`);
@@ -171,7 +187,7 @@ function renderAllKeywords() {
 }
 
 function toggleExpand(id) {
-    const n = nodes[id]; if (!n) return;
+    const n = nodes[id]; if (!n || !n.rawSummary) return;
     n.isExpanded = !n.isExpanded;
     n.element.classList.toggle('expanded', n.isExpanded);
     if (n.isExpanded) {
