@@ -1,0 +1,107 @@
+/* style.css - Refined Layer Hierarchy & Spacing */
+:root {
+    --bg-color: #0f0f0f;
+    --surface-color: #1a1a1a;
+    --border-color: #2a2a2a;
+    --accent-color: #00d4ff;
+    --node-width: 160px;
+    --node-height: 54px;
+    --doc-width: 320px;
+    --doc-height: 280px;
+    --synapse-color: #ff4d4d;
+}
+
+body {
+    font-family: 'Pretendard', sans-serif;
+    background-color: var(--bg-color);
+    color: #f0f0f0;
+    margin: 0;
+    overflow: hidden;
+}
+
+/* 1. Default Edges - Bottom Layer */
+.edge-line { 
+    z-index: 0; 
+    position: absolute; 
+    height: 1.5px; 
+    opacity: 0.3; 
+    background: linear-gradient(90deg, var(--accent-color), transparent); 
+    pointer-events: none; 
+    transform-origin: left center; 
+}
+
+/* 2. Synapse Edges - Above normal lines, Below nodes */
+.synapse-line { 
+    z-index: 5; 
+    position: absolute; 
+    height: 2px; 
+    pointer-events: none; 
+    transform-origin: left center; 
+    animation: synapseFlow 1s linear infinite; 
+    background: repeating-linear-gradient(90deg, var(--synapse-color), var(--synapse-color) 8px, transparent 8px, transparent 16px); 
+    opacity: 0.9; 
+}
+
+/* 3. Normal Nodes - Above synapse lines */
+.mind-node { 
+    z-index: 10; 
+    position: absolute; 
+    width: var(--node-width); 
+    height: var(--node-height); 
+    background: var(--surface-color); 
+    border: 2px solid var(--border-color); 
+    border-radius: 10px; 
+    cursor: pointer; 
+    transform: translate(-50%, -50%); 
+    transition: all 0.4s cubic-bezier(0.2, 1, 0.3, 1); 
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5); 
+    display: flex; 
+    flex-direction: column; 
+}
+
+.mind-node.selected { 
+    border-color: var(--accent-color); 
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.3); 
+    z-index: 15; /* Selected node slightly higher */
+}
+
+/* 4. Expanded Documents - Top Layer */
+.mind-node.expanded, .mind-node.pinned { 
+    z-index: 100; 
+}
+
+/* Node Header Internal */
+.node-header { height: var(--node-height); padding: 0 12px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 700; }
+.expand-btn { width: 20px; height: 20px; background: var(--accent-color); color: #000; border: none; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer; }
+
+/* Document Content */
+.node-content { position: absolute; top: calc(var(--node-height) / 2 + 8px); left: 50%; transform: translateX(-50%); width: var(--doc-width); height: 0; opacity: 0; background: #141414; border: 1px solid var(--border-color); border-radius: 12px; transition: all 0.4s ease; overflow: hidden; pointer-events: none; }
+.mind-node.expanded .node-content { height: var(--doc-height); opacity: 1; padding: 16px; pointer-events: auto; box-shadow: 0 15px 40px rgba(0,0,0,0.6); }
+
+/* Keyword Styling */
+.keyword-link {
+    color: inherit; 
+    text-decoration: underline;
+    text-decoration-color: var(--synapse-color);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+    cursor: help;
+    font-weight: 600;
+}
+
+.keyword-link:hover {
+    background-color: rgba(255, 77, 77, 0.15);
+    border-radius: 4px;
+}
+
+/* Synapse Target Glow */
+.mind-node.synapse-glow {
+    border-color: var(--synapse-color) !important;
+    box-shadow: 0 0 25px var(--synapse-color) !important;
+    transform: translate(-50%, -50%) scale(1.05);
+}
+
+@keyframes synapseFlow {
+    from { background-position: 0% 0; }
+    to { background-position: -32px 0; }
+}
