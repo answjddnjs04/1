@@ -101,6 +101,26 @@ body {
     transform: translate(-50%, -50%) scale(1.05);
 }
 
+/* Custom Scrollbar Styling */
+.custom-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+
+.custom-scroll::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+}
+
+.custom-scroll::-webkit-scrollbar-thumb {
+    background: var(--accent-color);
+    border-radius: 10px;
+    opacity: 0.8;
+}
+
+.custom-scroll::-webkit-scrollbar-thumb:hover {
+    background: #00e5ff;
+}
+
 @keyframes synapseFlow {
     from { background-position: 0% 0; }
     to { background-position: -32px 0; }
