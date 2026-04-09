@@ -1,31 +1,16 @@
-/* api.js - Secure Proxy-based AI Knowledge Analysis Engine */
+/* api.js - Cloudflare Functions Proxy Client */
 
 /**
  * [SECURITY NOTICE] 
- * 1. 브라우저에서 직접 Google API를 호출하는 로직을 제거했습니다.
- * 2. Cloudflare Worker 등의 프록시 엔드포인트를 통해 통신합니다.
+ * 1. 브라우저에서 직접 Google API를 호출하는 모든 로직을 삭제했습니다.
+ * 2. 모든 요청은 Cloudflare Pages Functions (/api/analyze)를 통해 처리됩니다.
+ * 3. 클라이언트 코드에는 어떠한 API 키도 포함되지 않습니다.
  */
 
-// Cloudflare Worker 배포 주소 (예: '/api/analyze' 또는 전체 URL)
-const PROXY_ENDPOINT = "/api/analyze";
+const ENDPOINT = "/api/analyze";
 
 /**
- * 로컬 테스트를 위한 API 키 관리 (sessionStorage)
- * Worker가 구성되지 않은 환경에서만 prompt를 통해 키를 임시 저장합니다.
- */
-function getLocalApiKey() {
-    let key = sessionStorage.getItem("TEMP_GEMINI_KEY");
-    if (!key) {
-        key = prompt("Cloudflare Worker가 설정되지 않았습니다. 로컬 테스트를 위해 Gemini API 키를 입력해주세요.\n(입력된 키는 브라우저 세션에만 임시 저장됩니다.)");
-        if (key) {
-            sessionStorage.setItem("TEMP_GEMINI_KEY", key);
-        }
-    }
-    return key;
-}
-
-/**
- * 지식 분석 요청 실행
+ * 지식 분석 요청 실행 (Cloudflare Functions 전용)
  * @param {string} topic - 분석할 주제
  * @param {string} context - 부모 노드의 문맥 데이터
  */
@@ -45,74 +30,53 @@ export async function fetchAIAnalysis(topic, context = "") {
 2. summary는 한국어로 작성하며 문맥(Context)이 주어지면 이를 고려하여 내용을 연결할 것.`;
 
     const userPrompt = `Context: ${context}\n\nTopic: ${topic}`;
+    
+    // Cloudflare Functions가 전달받을 표준 Google AI 페이로드 구성
     const payload = {
         contents: [{
             parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }]
         }]
     };
 
-    // 1. Cloudflare Worker 프록시 시도 (가장 권장되는 보안 방식)
     try {
-        console.log(`[AI Analysis] Sending request to proxy: ${PROXY_ENDPOINT}`);
-        const proxyResponse = await fetch(PROXY_ENDPOINT, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-                topic, 
-                context, 
-                payload // Worker에서 필요시 페이로드 전체 사용 가능
-            })
-        });
-
-        if (proxyResponse.ok) {
-            const data = await proxyResponse.json();
-            return parseGeminiResponse(data, topic);
-        }
-        
-        // 프록시 서버가 404 등을 반환하면 로컬 폴백으로 넘어감
-        if (proxyResponse.status === 404) {
-            throw new Error("Proxy endpoint not found");
-        }
-    } catch (e) {
-        console.warn("[AI Analysis] Proxy connection failed. Falling back to local storage key.");
-    }
-
-    // 2. 로컬 테스트 폴백 (sessionStorage 기반 직접 호출)
-    const localKey = getLocalApiKey();
-    if (!localKey) {
-        return { title: topic, summary: "API 키가 제공되지 않아 분석을 시작할 수 없습니다." };
-    }
-
-    // 폴백 시에는 gemini-1.5-flash 모델을 기본으로 직접 호출 시도
-    const FALLBACK_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${localKey}`;
-    
-    try {
-        const response = await fetch(FALLBACK_URL, {
+        const response = await fetch(ENDPOINT, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
         });
 
-        if (!response.ok) throw new Error("Fallback API request failed");
+        if (!response.ok) {
+            if (response.status === 404) {
+                console.error("[AI Analysis] Cloudflare Functions 설정 확인 필요: /api/analyze 경로를 찾을 수 없습니다.");
+            }
+            throw new Error(`API Proxy Error: ${response.status}`);
+        }
 
         const data = await response.json();
-        return parseGeminiResponse(data, topic);
+        return parseAIResponse(data, topic);
+
     } catch (error) {
-        console.error("[AI Analysis] Both Proxy and Fallback failed:", error);
-        return { title: topic, summary: "분석 요청 처리 중 오류가 발생했습니다. 설정을 확인해주세요." };
+        console.error("[AI Analysis] Request failed:", error.message);
+        return { 
+            title: topic, 
+            summary: "지식 분석 서버와 통신할 수 없습니다. Cloudflare Functions 설정을 확인해주세요." 
+        };
     }
 }
 
 /**
- * Gemini 응답 데이터를 공통으로 파싱하는 유틸리티
+ * 서버로부터 받은 응답 데이터를 파싱하는 유틸리티
  */
-function parseGeminiResponse(data, fallbackTitle) {
+function parseAIResponse(data, fallbackTitle) {
     try {
+        // Functions가 Google로부터 받은 응답을 그대로 전달한다고 가정
         let contentText = data.candidates[0].content.parts[0].text.trim();
+        
         // 마크다운 백틱 제거 정제
         if (contentText.startsWith("```")) {
-            contentText = contentText.replace(/^```json\n?/, "").replace(/```$/, "").trim();
+            contentText = contentText.replace(/^```(?:json)?\n?/, "").replace(/```$/, "").trim();
         }
+        
         const result = JSON.parse(contentText);
         return {
             title: result.title || fallbackTitle,
