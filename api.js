@@ -69,21 +69,34 @@ export async function fetchAIAnalysis(topic, context = "") {
  */
 function parseAIResponse(data, fallbackTitle) {
     try {
-        // Functions가 Google로부터 받은 응답을 그대로 전달한다고 가정
+        // 1. 데이터 구조가 정상인지 먼저 확인 (가장 중요!)
+        if (!data || !data.candidates || data.candidates.length === 0) {
+            console.error("[AI Analysis] API 응답에 결과가 없습니다:", data);
+            
+            // 만약 서버에서 에러 메시지를 보냈다면 출력
+            if (data.error) {
+                return { title: fallbackTitle, summary: `에러 발생: ${data.error.message}` };
+            }
+            return { title: fallbackTitle, summary: "AI가 응답을 생성하지 못했습니다. (세이프티 필터 또는 할당량 초과)" };
+        }
+
+        // 2. 텍스트 추출
         let contentText = data.candidates[0].content.parts[0].text.trim();
         
-        // 마크다운 백틱 제거 정제
-        if (contentText.startsWith("```")) {
-            contentText = contentText.replace(/^```(?:json)?\n?/, "").replace(/```$/, "").trim();
-        }
+        // 3. JSON 추출 및 파싱 (기존 로직 유지하되 안전하게)
+        const jsonMatch = contentText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) contentText = jsonMatch[0];
         
         const result = JSON.parse(contentText);
         return {
             title: result.title || fallbackTitle,
-            summary: result.summary || "분석 결과를 파싱할 수 없습니다."
+            summary: result.summary || "내용을 분석할 수 없습니다."
         };
     } catch (e) {
-        console.error("[AI Analysis] Parsing Error:", e);
-        return { title: fallbackTitle, summary: "AI 응답 형식이 올바르지 않습니다." };
+        console.error("[AI Analysis] 파싱 중 오류 발생:", e, "\n받은 데이터:", data);
+        return { 
+            title: fallbackTitle, 
+            summary: "AI 응답 형식이 올바르지 않거나 분석에 실패했습니다." 
+        };
     }
 }
