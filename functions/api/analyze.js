@@ -2,52 +2,64 @@
 
 export async function onRequestPost(context) {
     const API_KEY = context.env.GEMINI_API_KEY;
-    const requestData = await context.request.json();
-
-    // 정원님이 주신 표에서 할당량이 살아있는 고성능 모델 리스트 (전부 소문자)
-    const models = [
-        "gemini-2.5-flash",        // 1순위: 메인 (RPM 5)
-        "gemini-3.1-flash-lite",   // 2순위: 할당량 넉넉함 (RPM 15)
-        "gemini-3-flash"           // 3순위: 예비용 (RPM 5)
-    ];
-
-    let lastError = null;
-
-    for (const modelId of models) {
-        try {
-            // 최신 모델 인식을 위해 v1beta 경로 사용
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${API_KEY}`,
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(requestData)
-                }
-            );
-
-            const result = await response.json();
-
-            // 성공하면 바로 반환
-            if (response.ok && !result.error) {
-                console.log(`[Success] 사용된 모델: ${modelId}`);
-                return new Response(JSON.stringify(result), {
-                    headers: { "Content-Type": "application/json" }
-                });
-            }
-
-            // 에러가 "High Demand" 면 다음 모델로 즉시 이동
-            lastError = result.error;
-            console.warn(`[Retry] ${modelId} 실패 사유: ${lastError.message}`);
-
-        } catch (err) {
-            lastError = { message: err.message };
-            console.warn(`[Retry] ${modelId} 통신 장애 발생`);
-        }
+    
+    if (!API_KEY) {
+        return new Response(JSON.stringify({ error: { message: "API 키 설정 누락" } }), { status: 500 });
     }
 
-    // 모든 시도가 실패했을 때만 에러 반환
-    return new Response(JSON.stringify({ error: lastError }), { 
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-    });
+    try {
+        const requestData = await context.request.json();
+
+        // 할당량이 가장 넉넉한 3.1 모델을 1순위로 배치합니다.
+        const models = [
+            "gemini-3.1-flash-lite", // RPM 15 (가장 안정적)
+            "gemini-2.5-flash",      // RPM 5
+            "gemini-3-flash"         // RPM 5
+        ];
+
+        let lastError = { message: "모든 모델이 응답에 실패했습니다." };
+
+        for (const modelId of models) {
+            try {
+                const response = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${API_KEY}`,
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(requestData),
+                        signal: AbortSignal.timeout(8000) // 8초 넘으면 다음 모델로 패스
+                    }
+                );
+
+                const result = await response.json();
+
+                // 1. 응답이 성공적이고 결과가 있는 경우
+                if (response.ok && result.candidates && result.candidates.length > 0) {
+                    console.log(`[Success] 분석 완료: ${modelId}`);
+                    return new Response(JSON.stringify(result), {
+                        headers: { "Content-Type": "application/json" }
+                    });
+                }
+
+                // 2. 구글에서 에러 응답을 보낸 경우 기록하고 다음 모델 시도
+                if (result.error) {
+                    lastError = result.error;
+                    console.warn(`[Retry] ${modelId} 거절: ${lastError.message}`);
+                }
+
+            } catch (err) {
+                console.warn(`[Retry] ${modelId} 연결 실패: ${err.message}`);
+                lastError = { message: err.message };
+            }
+        }
+
+        // 모든 모델 실패 시 마지막 에러 반환
+        return new Response(JSON.stringify({ error: lastError }), { 
+            status: 500,
+            headers: { "Content-Type": "application/json" }
+        });
+
+    } catch (globalErr) {
+        return new Response(JSON.stringify({ error: { message: globalErr.message } }), { status: 500 });
+    }
 }
