@@ -155,6 +155,13 @@ export async function createNode(id, userInput, level = 0, parentId = null) {
 
     refreshLayout();
     renderAllKeywords();
+
+    // [강력 보강] 데이터 렌더링 직후 MathJax 수식 변환 트리거 실행
+    if (window.MathJax && window.MathJax.typesetPromise) {
+        window.MathJax.typesetPromise([el])
+            .then(() => console.log(`[MathJax] Node ${id} rendered successfully.`))
+            .catch((err) => console.error('[MathJax] Error:', err));
+    }
 }
 
 function renderAllKeywords() {
@@ -181,7 +188,6 @@ function renderAllKeywords() {
         });
     });
 
-    // [추가] 모든 키워드 렌더링 후 MathJax 실행하여 수식 변환
     if (window.MathJax && window.MathJax.typesetPromise) {
         window.MathJax.typesetPromise();
     }
