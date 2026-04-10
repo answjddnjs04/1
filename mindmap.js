@@ -1,4 +1,4 @@
-/* mindmap.js - Robust Synapse & Interaction Engine */
+/* mindmap.js - Robust Synapse & Interaction Engine with MathJax Support */
 import { lerp, calculateNodeLayout, getSafeElement } from './utils.js';
 import { fetchAIAnalysis } from './api.js';
 
@@ -109,13 +109,11 @@ export async function createNode(id, userInput, level = 0, parentId = null) {
     nodeCounter++;
     const currentIndex = nodeCounter;
     
-    // 로딩 상태를 위한 임시 엘리먼트 생성
     const el = document.createElement('div');
     el.id = id;
     el.className = `mind-node animate-node loading ${level === 0 ? 'selected' : ''}`;
-    el.innerHTML = `<div class="node-header"><span class="animate-pulse">Analyzing...</span></div>`;
+    el.innerHTML = `<div class="node-header"><span class="animate-pulse">Analyzing Knowledge...</span></div>`;
     
-    // 초기 위치 설정
     const parent = nodes[parentId];
     const initialX = parent ? parent.x : 0;
     const initialY = parent ? parent.y : 0;
@@ -142,11 +140,9 @@ export async function createNode(id, userInput, level = 0, parentId = null) {
         canvas.appendChild(line); links.push({ from: parentId, to: id, element: line });
     }
 
-    // AI 분석 호출 (부모 컨텍스트 전달)
     const context = parent ? parent.rawSummary : "";
     const analysis = await fetchAIAnalysis(userInput, context);
     
-    // 데이터 업데이트
     nodes[id].title = analysis.title;
     nodes[id].rawSummary = analysis.summary;
     el.classList.remove('loading');
@@ -164,7 +160,7 @@ export async function createNode(id, userInput, level = 0, parentId = null) {
 function renderAllKeywords() {
     const allNodes = Object.values(nodes);
     allNodes.forEach(node => {
-        if (!node.rawSummary) return; // 아직 로딩 중인 노드 스킵
+        if (!node.rawSummary) return;
 
         let html = node.rawSummary;
         allNodes.forEach(target => {
@@ -184,6 +180,11 @@ function renderAllKeywords() {
             link.onmouseout = () => nodes[link.dataset.targetId]?.element.classList.remove('synapse-glow');
         });
     });
+
+    // [추가] 모든 키워드 렌더링 후 MathJax 실행하여 수식 변환
+    if (window.MathJax && window.MathJax.typesetPromise) {
+        window.MathJax.typesetPromise();
+    }
 }
 
 function toggleExpand(id) {
